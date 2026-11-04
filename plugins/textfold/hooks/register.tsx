@@ -48,9 +48,9 @@ export const register: Register = (on, options) => {
   })
 
   // Above the prompt: the five levels. The band is one slot that several mods share, so this row goes on top and
-  // what the hooks beneath drew stays under it (5px apart in VS Code); a survey keeps the band alone. The surfaces
-  // name every plugin whose hook drew part of the band (VS Code heads its one frame "From the … plugins"), so
-  // the rows beneath stay credited to their own plugins.
+  // what the hooks beneath drew stays under it (in VS Code, past a divider line); a survey keeps the band alone. The
+  // surfaces name every plugin whose hook drew part of the band (VS Code heads its one frame "From the … plugins"),
+  // so the rows beneath stay credited to their own plugins.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const n = await read($, level)
@@ -135,29 +135,50 @@ export const register: Register = (on, options) => {
         row
       )
     }
-    // VS Code's box: 5px of visible space between one mod's rows and the next and under the last row (layout
-    // contract C2). This row brings its own space above it. Before rows beneath that bring none of their own it
-    // adds the rest, and before rows that do, nothing. The lowest block owns the box's bottom edge: the space under
-    // the last row is this root's unless the rows beneath end with space of their own.
+    // VS Code's box (layout contract C2): the fold row brings its own space above it, which puts its ink 7px under
+    // the host's title. A block beneath is joined to it by a divider line in the middle of the 7px between them:
+    // this root adds the space from the row to the divider, and the block beneath brings its own space under it, or,
+    // if it brings none, gets this root's. The lowest block owns the box's bottom edge: the space under the last row
+    // is this root's unless the rows beneath end with space of their own.
     return (
       <Box
         flexDirection="column"
         paddingTop={SPACE.above}
         {...(below && endsSpaced(below) ? {} : { paddingBottom: SPACE.end })}
-        {...(below && !startsSpaced(below) ? { rowGap: SPACE.between } : {})}
       >
         {row}
+        {below && (
+          <Box
+            flexDirection="column"
+            height={0}
+            marginTop={SPACE.between}
+            {...(startsSpaced(below) ? {} : { marginBottom: SPACE.unspaced })}
+          >
+            <Box height={DIVIDER.line} marginTop={DIVIDER.hang} flexShrink={0} backgroundColor="promptBorder" />
+          </Box>
+        )}
         {below}
       </Box>
     )
   })
 }
 
-// VS Code's space around the fold row, in the band's lines (1.4 × 13px at the chat font's default), measured in the
-// host's frame (1px under the title, 4px at the bottom) so that each visible gap is 5px: above the row, whose top
-// border sits 1 to 1.2px under the band's last ink with nothing added; before a text row beneath, whose ink starts
-// 3.75 to 4.3px under the row's bottom border; and under the last row, 4px from the box's edge.
-const SPACE = { above: 0.21, between: 0.06, end: 0.06 } as const
+// VS Code's space around the fold row, in the band's lines (1.4 × 13px at the chat font's default), measured by ink in
+// the host's frame (1px under the title, 4px at the bottom), layout contract C2:
+// - above the row: 7px from the host's title to the row's top border, its first ink, which leaves the divider over a
+//   block 3px over it;
+// - between the row and a block beneath: from the row's bottom border, its last ink, to the divider's join, so that
+//   the divider's line is 3px under the row;
+// - under the divider, before a block beneath that brings no space of its own above it: a text row's, whose ink starts
+//   3.75 to 4.3px under its top;
+// - under the last row: 5px to the box's edge.
+const SPACE = { above: 0.26, between: 0.12, unspaced: 0.06, end: 0.06 } as const
+
+// The line between two mods' blocks in VS Code's box (C2): 1px of the theme's prompt border color across the
+// content's width, in the band's lines. Its Box takes no height: the line hangs DIVIDER.hang under the join, into
+// the top space of the block beneath, which every block sizes to sit 7px under the host's title; there the line sits
+// 3px over that block's ink.
+const DIVIDER = { line: 0.055, hang: 0.044 } as const
 
 // Whether a tree starts with space of its own above it: a top padding or margin on its root, or on the first of a
 // column's children, as far down as the first row goes
@@ -185,7 +206,7 @@ const spaced = (node: unknown, side: keyof typeof SIDES): boolean => {
 }
 
 // The space between the fold row's wrapped lines in VS Code, in the band's lines: about 2.7px at 13px, a clear step
-// under the 5px between mods' rows, so a wrapped line reads as part of this row (proximity)
+// under the 7px between mods' rows, so a wrapped line reads as part of this row (proximity)
 const WRAP = 0.15
 
 // A VS Code button's line in the band's lines: its 16px of `line-height: normal` over 1.4 × 13px, rounded up

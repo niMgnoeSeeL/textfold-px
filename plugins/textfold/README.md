@@ -1,11 +1,17 @@
 # TextFold for Claude Code
 
-## Local fork changes (0.2.3-px.5)
+## Local fork changes (0.2.3-px.6)
 
 This is a local fork of textfold 0.2.3 (upstream commit 3046733). It changes only the row above the prompt; the folding and the system-prompt section are upstream's.
 
 - **The row shares the band.** The fold row is drawn on top, and what the mods beneath draw stays under it. An earlier local patch dropped one or the other whenever something was beneath. A survey still has the band to itself, and Claude Code's own placeholder is never nested.
-- **Space in VS Code's box** (0.2.3-px.3, layout contract C2): 5px of visible space above the fold row, between it and the rows beneath, and under the last row to the box's edge (`paddingTop 0.21`, `rowGap 0.06`, `paddingBottom 0.06`, in lines of 1.4 × 13px). Rows beneath that bring their own space above them get no gap added, and rows beneath that end with their own space under them own the box's bottom edge: the fold row's root then adds none (0.2.3-px.5). When the fold row wraps in a narrow box, its lines sit about 2.7px apart (`rowGap 0.15`, 0.2.3-px.4), a clear step under the 5px between mods, so the wrapped line reads as part of the row. The terminal, the desktop and mobile stack the rows with no gap.
+- **Space in VS Code's box** (layout contract C2), measured by ink at the 13px chat font, in lines of 1.4 × 13px:
+  - **Above the fold row**, its own space (`paddingTop 0.26`): 7px under the host's title when it is the box's first row, and 3px under the divider when a block is above it.
+  - **A divider joins the fold row to a block beneath**, in the middle of the 7px between them: a 1px line in the theme's prompt border color (`promptBorder`) across the content's width. The root adds `marginTop 0.12` from the row to the divider's join, so the line sits 3px under the row. The divider's Box takes no height; its line hangs `0.044` lines under the join, into the top space the block beneath brings, and sits 3px over that block's ink. A block beneath that brings no space of its own above it gets `marginBottom 0.06` under the join, a text row's.
+  - **No divider** sits under the host's title, under the last row, or over Claude Code's own placeholder.
+  - **The lowest block owns the box's bottom edge**: 5px under the last row (`paddingBottom 0.06`), unless the rows beneath end with space of their own, and then the fold row's root adds none.
+  - **A wrapped fold row** in a narrow box has its lines about 2.7px apart (`rowGap 0.15`), a clear step under the 7px between mods, so the wrapped line reads as part of the row.
+  - **The terminal, the desktop and mobile** stack the rows with no gap and no divider.
 - **VS Code gets its own row.** Every level but the current one is an outlined button. The current level is an inverted box with the same border, not a button. `fold` is in the theme's secondary text color, not dim, and stays with the first level when the row wraps. The editor has no digit keys.
 - **In VS Code the current level is a button's height** (0.2.3-px.2). The inverted box and the `fold` label are held to a button's line (`height 0.88`, in the band's lines of 1.4), so the box's top and bottom meet the buttons' and the label's text lines up with theirs at the default 13px chat font; at larger chat fonts the box can be up to about 1.7px taller.
 - **The terminal, the desktop and mobile** keep the row as it was, digit keys included.
