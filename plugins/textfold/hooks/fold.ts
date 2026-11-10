@@ -135,11 +135,23 @@ function items(b: Block) {
   return out
 }
 
+// Chinese and Japanese characters, each read as a word of its own: kana (U+3040–30FF), the unified ideographs
+// (U+3400–9FFF) and the compatibility ideographs (U+F900–FAFF). One class for both counts, so the two cannot drift.
+const CJK_CHAR = /[\u3040-\u30FF\u3400-\u9FFF\uF900-\uFAFF]/g
+
+// Hangul: the jamo (U+1100–11FF), their compatibility forms (U+3130–318F), jamo extended A (U+A960–A97F), the
+// syllables (U+AC00–D7AF) and jamo extended B (U+D7B0–D7FF). Korean spaces its words as English does, so a run of
+// Hangul counts as one word, as a run of Latin letters does, and a particle written onto a Latin word
+// (`Cache-Control도`) stays part of that word.
+const HANGUL = '\\u1100-\\u11FF\\u3130-\\u318F\\uA960-\\uA97F\\uAC00-\\uD7AF\\uD7B0-\\uD7FF'
+const WORD = new RegExp(`[A-Za-z0-9${HANGUL}][\\w'’${HANGUL}-]*`, 'g')
+
+/** Words: each Chinese or Japanese character, and each run of Latin letters, digits or Hangul. */
 export function words(md: string) {
   const plain = md.replace(/```[\s\S]*?```/g, ' ')
-  const cjk = (plain.match(/[぀-ヿ㐀-鿿豈-﫿]/g) ?? []).length
-  const latin = (plain.replace(/[぀-ヿ㐀-鿿豈-﫿]/g, ' ').match(/[A-Za-z0-9][\w'’-]*/g) ?? []).length
-  return cjk + latin
+  const cjk = (plain.match(CJK_CHAR) ?? []).length
+  const spaced = (plain.replace(CJK_CHAR, ' ').match(WORD) ?? []).length
+  return cjk + spaced
 }
 
 /** Below this many words a reply is read whole: there is nothing in "Done, the tests pass." to fold. */
@@ -147,10 +159,11 @@ export const MIN_WORDS = 80
 /** A fold must hide at least this share of a reply, or the reader would not see that anything changed. */
 export const MIN_HIDDEN = 0.25
 
-/** Words as reading effort: a Chinese or Japanese character reads as about 1/1.6 of an English word. */
+/** Words as reading effort: a Chinese or Japanese character reads as about 1/1.6 of an English word; a Korean
+ *  word, spaced as an English one, reads as one. */
 function reading(md: string) {
   const plain = md.replace(/```[\s\S]*?```/g, ' ')
-  const cjk = (plain.match(/[぀-ヿ㐀-鿿豈-﫿]/g) ?? []).length
+  const cjk = (plain.match(CJK_CHAR) ?? []).length
   return words(md) - cjk + cjk / 1.6
 }
 

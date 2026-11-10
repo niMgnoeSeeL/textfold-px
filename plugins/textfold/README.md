@@ -1,8 +1,10 @@
 # TextFold for Claude Code
 
-## Local fork changes (0.2.3-px.6)
+## Local fork changes (0.2.3-px.7)
 
-This is a local fork of textfold 0.2.3 (upstream commit 3046733). It changes only the row above the prompt; the folding and the system-prompt section are upstream's.
+This is a local fork of textfold 0.2.3 (upstream commit 3046733). It changes the row above the prompt and how Korean is counted; the folding and the system-prompt section are otherwise upstream's.
+
+- **Korean is counted, so a Korean reply folds.** A run of Hangul counts as one word, as a run of Latin letters does, and a particle written onto an English word (`Cache-Control도`) stays part of it; a Korean word weighs as one word, not as Chinese characters do. Upstream counted only the Latin words of a Korean reply, and its reading-effort count took Hangul for Chinese characters (its class began at U+8C48, a lookalike of U+F900), so a Korean reply never reached 80 words and never folded. Chinese and Japanese count as before.
 
 - **The row shares the band.** The fold row is drawn on top, and what the mods beneath draw stays under it. An earlier local patch dropped one or the other whenever something was beneath. A survey still has the band to itself, and Claude Code's own placeholder is never nested.
 - **Space in VS Code's box** (layout contract C2), measured by ink at the 13px chat font, in lines of 1.4 × 13px:
