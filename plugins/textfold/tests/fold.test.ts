@@ -196,4 +196,31 @@ describe('Korean', () => {
     const short = '테스트가 모두 통과했습니다. 변경 사항은 캐시 키에 언어를 넣은 것입니다.'
     expect(worthFolding(short, fold(short, 5).text)).toBe(false)
   })
+
+  test('at Points a label-only item keeps its first level of sub-items', async () => {
+    const md = [
+      '- **Outline:** a reply without headings reads as Points. More detail here.',
+      '- **Never folded:**',
+      '  - A reply under 80 words. It is short.',
+      '    - a deeper note',
+      '  - A fold that hides less than a quarter.',
+      '- **Sentences end:**',
+      '  - At a stop and a space.',
+    ].join('\n')
+    const t = fold(md, 3).text
+    expect(t).toContain('- **Outline:** a reply without headings reads as Points. …')
+    expect(t).toContain('- **Never folded:**\n  - A reply under 80 words. …\n  - A fold that hides less than a quarter.')
+    expect(t).not.toContain('a deeper note')
+    expect(t).toContain('- **Sentences end:**\n  - At a stop and a space.')
+  })
+
+  test('an item with words after its colon is not a label', async () => {
+    const md = '- **Cost:** none, the fold is local.\n  - It runs no model.'
+    expect(fold(md, 3).text).toBe('- **Cost:** none, the fold is local.')
+  })
+
+  test('at Gist a label-only first item gives its first sub-item', async () => {
+    const md = '- **Cause:**\n  - Hangul was not counted. So nothing folded.\n  - The weight went negative.\n- **Fix:**\n  - Count it.'
+    expect(fold(md, 5).text).toBe('**Cause:** Hangul was not counted. …')
+  })
 })

@@ -124,9 +124,31 @@ function sentences(text: string, n: number) {
   return { text: out.join(' '), more }
 }
 
+type Item = { indent: number; marker: string; text: string }
+
+/** Whether an item is only a label for the sub-items under it: one short phrase ending in a colon, bold or not,
+ *  with nothing after it on its line. */
+function isLabel(it: Item) {
+  const plain = it.text.replace(/[*_`]/g, '').trim()
+  return /[:：]$/.test(plain) && !firstSentence(it.text).more && words(plain) <= 8
+}
+
+/** The first level of sub-items under a top-level item: those after it, up to the next item at its indent or less,
+ *  at the smallest indent among them. */
+function childrenOf(all: Item[], it: Item) {
+  const i = all.indexOf(it)
+  const kids: Item[] = []
+  for (const k of all.slice(i + 1)) {
+    if (k.indent <= it.indent) break
+    kids.push(k)
+  }
+  const min = Math.min(...kids.map((k) => k.indent))
+  return kids.filter((k) => k.indent === min)
+}
+
 /** A list's items: the marker, the indent and the item's text (its continuation lines joined). */
 function items(b: Block) {
-  const out: { indent: number; marker: string; text: string }[] = []
+  const out: Item[] = []
   for (const line of b.lines) {
     const m = ITEM.exec(line)
     if (m) out.push({ indent: (m[1] ?? '').length, marker: m[2] ?? '-', text: line.slice(m[0].length) })
@@ -209,17 +231,24 @@ export function fold(md: string, level: number): { text: string; total: number; 
         else out.push(`\`⋯ ${b.lines.length - 2} lines of code\``)   // less the fences
         break
       case 'list': {
-        const its = items(b).filter((it) => level === 2 || it.indent === 0)
+        const all = items(b)
+        const its = all.filter((it) => level === 2 || it.indent === 0)
+        const line = (it: Item) => {
+          const s = firstSentence(it.text)
+          return `${' '.repeat(it.indent)}${it.marker} ${s.head}${s.more ? MORE : ''}`
+        }
         if (level <= 3) {
-          out.push(its.map((it) => {
-            const s = firstSentence(it.text)
-            return `${' '.repeat(it.indent)}${it.marker} ${s.head}${s.more ? MORE : ''}`
-          }).join('\n'))
+          // An item that is only a label ("**Costs:**") says nothing once its sub-items are gone, so at Points it
+          // keeps its first level of sub-items, each to its first sentence. Brief keeps every item anyway.
+          out.push(its.flatMap((it) => (level === 3 && isLabel(it) ? [line(it), ...childrenOf(all, it).map(line)] : [line(it)])).join('\n'))
         } else if (underHeading || (level === 5 && first)) {
           const it = its[0]
           if (it) {
             const s = firstSentence(it.text)
-            out.push(s.head + (s.more || its.length > 1 ? MORE : ''))
+            // a label alone reads as nothing: give it its first sub-item's first sentence
+            const child = isLabel(it) ? childrenOf(all, it)[0] : undefined
+            const c = child ? firstSentence(child.text) : undefined
+            out.push(c ? `${s.head} ${c.head}${c.more || childrenOf(all, it).length > 1 || its.length > 1 ? MORE : ''}` : s.head + (s.more || its.length > 1 ? MORE : ''))
           }
           underHeading = false
           first = false

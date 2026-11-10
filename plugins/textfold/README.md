@@ -1,9 +1,10 @@
 # TextFold for Claude Code
 
-## Local fork changes (0.2.3-px.9)
+## Local fork changes (0.2.3-px.10)
 
-This is a local fork of textfold 0.2.3 (upstream commit 3046733). It changes the row above the prompt and how Korean is counted; the folding and the system-prompt section are otherwise upstream's.
+This is a local fork of textfold 0.2.3 (upstream commit 3046733). It changes the row above the prompt, how Korean is counted and how a label-only list item folds; the folding and the system-prompt section are otherwise upstream's.
 
+- **A label-only list item keeps what it labels.** At Points, a top-level item that is only a label (a phrase of up to 8 words ending in a colon, bold or not, with nothing after it, such as `**Costs:**`) keeps its first level of sub-items, each to its first sentence. At Outline and Gist, such an item, when it is the one shown, gives its first sub-item's first sentence after the label. Upstream showed the label alone, which says nothing.
 - **Korean is counted, so a Korean reply folds.** A run of Hangul counts as one word, as a run of Latin letters does, and a particle written onto an English word (`Cache-Control도`) stays part of it; a Korean word weighs as one word, not as Chinese characters do. Upstream counted only the Latin words of a Korean reply, and its reading-effort count took Hangul for Chinese characters (its class began at U+8C48, a lookalike of U+F900), so a Korean reply never reached 80 words and never folded. Chinese and Japanese count as before.
 
 - **In VS Code, cache-tax-px's keepwarm row sits at the right end of the fold row's line** where the box is 35 columns wide or more (`bodyColumns`, the webview's content width over the width of `─`, 1em: about 473px at the 13px chat font). The fold row takes about 23.8em and the keepwarm row needs its icon and `cache-tax warm`, about 9.4em, so both fit on one line from there.
