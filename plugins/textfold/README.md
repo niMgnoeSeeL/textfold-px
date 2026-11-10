@@ -1,6 +1,6 @@
 # TextFold for Claude Code
 
-## Local fork changes (0.2.3-px.8)
+## Local fork changes (0.2.3-px.9)
 
 This is a local fork of textfold 0.2.3 (upstream commit 3046733). It changes the row above the prompt and how Korean is counted; the folding and the system-prompt section are otherwise upstream's.
 
@@ -10,7 +10,10 @@ This is a local fork of textfold 0.2.3 (upstream commit 3046733). It changes the
   - The handoff: cache-tax-px keys the block that holds its row `cache-tax:keepwarm`. It comes back in this row's `next(e)` tree, as the tree's root when nothing else is beneath, or as the last child of `[rows, divider, block]`. Only those two places are read. The block is lifted out with the divider over it; cache-tax's root stays with the rows it holds (reflect-mod's, the built-in notice), so they keep their place and their plugin's credit.
   - Beside the levels, the row takes what they leave on their line, right-aligned (`flexGrow 1`, `width 0`, `justifyContent flex-end`), and ends `0.25ch` inside the right edge, where the band's crab ends. Its width starts at 0, so it truncates with `…` as the box narrows and never pushes or wraps the levels; the levels stay packed at the left.
   - The fold row's root then owns the box's bottom edge, or the rows beneath do (C2's rules, as without the keepwarm row).
-  - **Fallback:** narrower than 35 columns, with no keyed block, or with the tree in another shape, everything is drawn as it was handed: the keepwarm row stays at the box's foot under its own divider. The terminal, the desktop and mobile are unchanged.
+  - **Fallback:** narrower than 35 columns, with no keyed block, or with the tree in another shape, everything is drawn as it was handed: the keepwarm row stays at the box's foot under its own divider.
+- **In the terminal, the keepwarm row sits at the right end of the fold row's line** where `bodyColumns` (the slot's cells) is 78 or more: the fold row's 55 cells (`fold`, five `n: Level` and their gaps), a 2-cell gap, `[>] cache-tax · warm` (20) and 1 cell at the right, where the usage row above ends.
+  - cache-tax-px keys its terminal row `cache-tax:keepwarm`; it comes back as the tree's root, or as the last of `[rows, row]`. The row is lifted out of that tree; the rows beneath stay as they are, with no gap or divider.
+  - Beside the levels it is right-aligned (`flexGrow 1`, `width 0`, `justifyContent flex-end`, `paddingRight 1`) and truncates with `…` before it could push the levels. Under 78 columns (an 80-column terminal reports 75), or without the key, the tree is drawn as it was handed. The desktop and mobile are unchanged.
 - **The row shares the band.** The fold row is drawn on top, and what the mods beneath draw stays under it. An earlier local patch dropped one or the other whenever something was beneath. A survey still has the band to itself, and Claude Code's own placeholder is never nested.
 - **Space in VS Code's box** (layout contract C2), measured by ink at the 13px chat font, in lines of 1.4 × 13px:
   - **Above the fold row**, its own space (`paddingTop 0.26`): 7px under the host's title when it is the box's first row, and 3px under the divider when a block is above it.
