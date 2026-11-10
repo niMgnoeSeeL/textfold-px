@@ -19,6 +19,41 @@ The person reading this session can fold your replies with one key: to each para
 - Give a reply longer than four paragraphs a few short headings.
 This changes the order of what you write, not its content or its length.`
 
+// Where the keepwarm row drawn beside the levels ends: this far inside the right edge, in `ch`, as the band's crab
+// above it ends (2px at the 13px chat font)
+export const RIGHT_INSET = 0.25
+
+// cache-tax-px's keepwarm row beside the levels, in VS Code. cache-tax-px keys the VS Code block
+// that holds its row with KEEPWARM_KEY; it comes back in this row's `next(e)` tree, as that tree's root when nothing
+// else is beneath, or as the last child of `[rows, divider, block]`. Where the box is wide enough, the row is lifted
+// out of that tree, with the divider over it, and drawn at the right end of the fold row's line. A tree without the
+// key, or a box too narrow, is drawn as it is (C1: nothing hidden).
+export const KEEPWARM_KEY = 'cache-tax:keepwarm'
+// The box's width in the webview's columns (its content width over the width of `─`, 1em) from which both fit on one
+// line: the fold row (about 23.8em at the 13px chat font), a column's gap and the keepwarm row down to its icon and
+// `cache-tax warm` (about 9.4em). Under it the row stays at the box's foot.
+export const BESIDE_MIN_COLUMNS = 35
+
+type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] }
+const keyOf = (n: unknown) => (typeof n === 'object' && n !== null ? (n as Node).props?.key : undefined)
+const isDivider = (n: unknown) => {
+  const d = n as Node
+  const line = d?.children?.[0] as Node | undefined
+  return d?.type === 'Box' && d.props?.height === 0 && line?.props?.backgroundColor === 'promptBorder'
+}
+// The keepwarm row and what is left of the tree once it is lifted out, or null when the tree does not hold it
+export const liftKeepwarm = (tree: unknown): { status: unknown; rest: unknown } | null => {
+  const t = tree as Node
+  // Alone, the block is cache-tax's root: its spacing goes (this row's line has its own) and the rest of it, the mark
+  // that credits its plugin with it, stays
+  if (keyOf(t) === KEEPWARM_KEY) return t.children?.length === 1 ? { status: { ...t, props: { flexDirection: 'column' } }, rest: null } : null
+  const kids = t?.type === 'Box' && t.props?.flexDirection === 'column' ? (t.children ?? []) : []
+  const last = kids[kids.length - 1] as Node | undefined
+  if (kids.length < 3 || keyOf(last) !== KEEPWARM_KEY || last?.children?.length !== 1 || !isDivider(kids[kids.length - 2])) return null
+  // The rest keeps cache-tax's root, and with it the mark that credits its plugin
+  return { status: last.children[0], rest: { ...t, children: kids.slice(0, -2) } }
+}
+
 export const register: Register = (on, options) => {
   // The level every reply is read at: 1 Full (as written) to 5 Gist, from the setting until the reader picks another.
   // A session keeps the one it has when the setting changes (the module reloads; the value is the host's).
@@ -55,7 +90,9 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey) return next(e)
     const n = await read($, level)
     const pick = (i: number) => () => update($, level, () => (i + 1) as Level)
-    const theirs = await next(e)
+    const drawnBeneath = await next(e)
+    const lifted = e.surface === 'vscode' && e.props.bodyColumns >= BESIDE_MIN_COLUMNS ? liftKeepwarm(drawnBeneath) : null
+    const theirs = lifted ? lifted.rest : drawnBeneath
     let row
     if (e.surface === 'vscode') {
       // VS Code draws a Button's label alone, ignores `plain` and has no hotkeys. Every level but the current one
@@ -91,15 +128,34 @@ export const register: Register = (on, options) => {
           <Button key={`level-${i + 1}`} label={name} dimColor onPress={pick(i)} />
         ),
       )
+      const head = (
+        <Box flexDirection="row" flexWrap="nowrap" alignItems="center" columnGap={1}>
+          <Box flexWrap="nowrap" alignItems="center" height={LINE}>
+            <Text color="inactive">fold</Text>
+          </Box>
+          {first}
+        </Box>
+      )
+      // The keepwarm row, when lifted, takes what the levels leave on their line, at its right end: a status beside a
+      // control, in its own quiet type and no button's frame. It truncates as it narrows and never pushes the levels.
+      const status = lifted && (
+        <Box
+          key="keepwarm"
+          flexDirection="row"
+          flexWrap="nowrap"
+          flexGrow={1}
+          width={0}
+          justifyContent="flex-end"
+          paddingRight={RIGHT_INSET}
+        >
+          {lifted.status as never}
+        </Box>
+      )
       row = (
         <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1} rowGap={WRAP}>
-          <Box flexDirection="row" flexWrap="nowrap" alignItems="center" columnGap={1}>
-            <Box flexWrap="nowrap" alignItems="center" height={LINE}>
-              <Text color="inactive">fold</Text>
-            </Box>
-            {first}
-          </Box>
+          {head}
           {rest}
+          {status || null}
         </Box>
       )
     } else {

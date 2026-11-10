@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
+import { BESIDE_MIN_COLUMNS, KEEPWARM_KEY, liftKeepwarm, RIGHT_INSET } from '../hooks/register'
 
 // The band above the prompt, as several mods share it: textfold's row on top, what the hooks beneath drew under
 // it (the layout contract's C1 and C2), and in VS Code a row of outlined buttons with the current level inverted.
@@ -370,4 +371,71 @@ test('the terminal, the desktop and mobile keep today’s row, hotkeys included'
     expect(bare(await band.drawn())).toEqual(today(1))
     await band.unmount()
   }
+})
+
+// cache-tax-px's keepwarm row beside the levels in VS Code
+describe('the keepwarm row beside the levels', () => {
+  const row = { type: 'Box', props: { flexDirection: 'row', flexWrap: 'nowrap' }, children: ['cache-tax warm'] }
+  const block = { type: 'Box', props: { key: KEEPWARM_KEY, flexDirection: 'column', paddingTop: 0.195, paddingBottom: 0.005 }, children: [row], part: { plugin: 'cache-tax' } }
+  const line = { type: 'Box', props: { flexDirection: 'column', height: 0, marginTop: 0.12 }, children: [{ type: 'Box', props: { height: 0.055, marginTop: 0.044, flexShrink: 0, backgroundColor: 'promptBorder' } }] }
+  const reflect = { type: 'Box', props: { flexDirection: 'column', paddingTop: 0.05 }, children: ['reflect · rule'] }
+
+  test('alone, the block is lifted whole but for its spacing, and nothing is left beneath', async () => {
+    expect(liftKeepwarm(block)).toEqual({ status: { ...block, props: { flexDirection: 'column' } }, rest: null })
+  })
+  test('under rows beneath, the block and the divider over it leave cache-tax’s root, which keeps the rows', async () => {
+    const root = { type: 'Box', props: { flexDirection: 'column' }, children: [reflect, line, block], part: { plugin: 'cache-tax' } }
+    expect(liftKeepwarm(root)).toEqual({ status: block.children[0], rest: { ...root, children: [reflect] } })
+  })
+  test('a tree without the key, or in another shape, is left as it is', async () => {
+    expect(liftKeepwarm(reflect)).toBe(null)
+    expect(liftKeepwarm({ type: 'Box', props: { flexDirection: 'column' }, children: [reflect, block] })).toBe(null)
+    expect(liftKeepwarm({ type: 'engine' })).toBe(null)
+    expect(liftKeepwarm(null)).toBe(null)
+  })
+  test('the box must be wide enough for the levels and the row down to `cache-tax warm`', async () => {
+    expect(BESIDE_MIN_COLUMNS).toBe(35)
+  })
+
+  // cache-tax-px's tree as it hands it up: its rows beneath (reflect's), a divider, and its keyed block
+  const handed = (on: On) =>
+    on('ui.render', async ($, e) => {
+      const { Box, Text } = $.ui.resolve(e)
+      const line = Box({ flexDirection: 'column', height: 0, marginTop: 0.12, children: [Box({ height: 0.055, marginTop: 0.044, flexShrink: 0, backgroundColor: 'promptBorder' })] })
+      const block = Box({ key: KEEPWARM_KEY, flexDirection: 'column', paddingTop: 0.195, paddingBottom: 0.005, children: [Box({ flexDirection: 'row', flexWrap: 'nowrap', children: [Text({ children: ['cache-tax warm'] })] })] })
+      return Box({ flexDirection: 'column', children: [Box({ flexDirection: 'column', paddingTop: 0.05, children: [Text({ children: ['reflect · rule'] })] }), line, block] })
+    })
+  const mountAt = ($: any, columns: number) =>
+    $.ui.mount({ plugin: 'textfold', surface: 'vscode', component: 'AbovePrompt', props: { ...PROPS, bodyColumns: columns } })
+
+  test('wide enough, the row sits at the right end of the fold row’s line, and the divider over it is gone', async ($, on) => {
+    handed(on)
+    const band = await mountAt($, BESIDE_MIN_COLUMNS)
+    const row = await rowOf(band)
+    const status = row.children?.[row.children.length - 1] as Element
+    expect(status.props).toEqual({ key: 'keepwarm', flexDirection: 'row', flexWrap: 'nowrap', flexGrow: 1, width: 0, justifyContent: 'flex-end', paddingRight: RIGHT_INSET })
+    const all = JSON.stringify(await band.drawn())
+    expect(all.match(/cache-tax warm/g)?.length).toBe(1)
+    // one divider: textfold's own, between the fold row and reflect's rows
+    expect(all.match(/promptBorder/g)?.length).toBe(1)
+    expect(all.indexOf('cache-tax warm')).toBeLessThan(all.indexOf('reflect · rule'))
+    await band.unmount()
+  })
+
+  test('narrower, the tree is drawn as it was handed, the row at the box’s foot', async ($, on) => {
+    handed(on)
+    const band = await mountAt($, BESIDE_MIN_COLUMNS - 1)
+    const all = JSON.stringify(await band.drawn())
+    expect(all.match(/promptBorder/g)?.length).toBe(2)
+    expect(all.indexOf('cache-tax warm')).toBeGreaterThan(all.indexOf('reflect · rule'))
+    await band.unmount()
+  })
+
+  test('in the terminal the tree is drawn as it was handed', async ($, on) => {
+    handed(on)
+    const band = await $.ui.mount({ plugin: 'textfold', surface: 'terminal', component: 'AbovePrompt', props: { ...PROPS, bodyColumns: 200 } })
+    const all = JSON.stringify(await band.drawn())
+    expect(all.indexOf('cache-tax warm')).toBeGreaterThan(all.indexOf('reflect · rule'))
+    await band.unmount()
+  })
 })
