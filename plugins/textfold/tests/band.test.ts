@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
-import { BESIDE_MIN_COLUMNS, KEEPWARM_KEY, liftKeepwarm, RIGHT_INSET } from '../hooks/register'
+import { BESIDE_MIN_COLUMNS, KEEPWARM_KEY, liftKeepwarm, RIGHT_INSET, TERMINAL_BESIDE_MIN_COLUMNS } from '../hooks/register'
 
 // The band above the prompt, as several mods share it: textfold's row on top, what the hooks beneath drew under
 // it (the layout contract's C1 and C2), and in VS Code a row of outlined buttons with the current level inverted.
@@ -431,11 +431,37 @@ describe('the keepwarm row beside the levels', () => {
     await band.unmount()
   })
 
-  test('in the terminal the tree is drawn as it was handed', async ($, on) => {
-    handed(on)
-    const band = await $.ui.mount({ plugin: 'textfold', surface: 'terminal', component: 'AbovePrompt', props: { ...PROPS, bodyColumns: 200 } })
+  // cache-tax-px's terminal tree: its rows beneath (reflect's), then its keyed row, with no gap or divider
+  const handedTerminal = (on: On) =>
+    on('ui.render', async ($, e) => {
+      const { Box, Text } = $.ui.resolve(e)
+      const row = Box({ key: KEEPWARM_KEY, flexWrap: 'nowrap', flexDirection: 'row', children: [Text({ wrap: 'truncate-end', children: ['[>] cache-tax · warm · keepwarm 3h00m left'] })] })
+      return Box({ flexDirection: 'column', children: [Text({ children: ['reflect · rule'] }), row] })
+    })
+  const terminalAt = ($: any, columns: number) =>
+    $.ui.mount({ plugin: 'textfold', surface: 'terminal', component: 'AbovePrompt', props: { ...PROPS, bodyColumns: columns } })
+
+  test('in the terminal, wide enough, the row sits at the right end of the fold row’s line', async ($, on) => {
+    handedTerminal(on)
+    expect(TERMINAL_BESIDE_MIN_COLUMNS).toBe(4 + 41 + 10 + 2 + 20 + 1)
+    const band = await terminalAt($, TERMINAL_BESIDE_MIN_COLUMNS)
+    const drawn = (await band.drawn()) as Element
+    const row = drawn.children?.[0] as Element
+    const status = row.children?.[row.children.length - 1] as Element
+    expect(status.props).toEqual({ key: 'keepwarm', flexDirection: 'row', flexGrow: 1, width: 0, justifyContent: 'flex-end', paddingRight: 1 })
+    const all = JSON.stringify(drawn)
+    expect(all.match(/cache-tax · warm/g)?.length).toBe(1)
+    expect(all.indexOf('cache-tax · warm')).toBeLessThan(all.indexOf('reflect · rule'))
+    // no gap and no divider in the terminal
+    expect(all).not.toContain('promptBorder')
+    await band.unmount()
+  })
+
+  test('in the terminal, narrower, the tree is drawn as it was handed', async ($, on) => {
+    handedTerminal(on)
+    const band = await terminalAt($, TERMINAL_BESIDE_MIN_COLUMNS - 1)
     const all = JSON.stringify(await band.drawn())
-    expect(all.indexOf('cache-tax warm')).toBeGreaterThan(all.indexOf('reflect · rule'))
+    expect(all.indexOf('cache-tax · warm')).toBeGreaterThan(all.indexOf('reflect · rule'))
     await band.unmount()
   })
 })

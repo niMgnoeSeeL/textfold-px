@@ -54,6 +54,23 @@ export const liftKeepwarm = (tree: unknown): { status: unknown; rest: unknown } 
   return { status: last.children[0], rest: { ...t, children: kids.slice(0, -2) } }
 }
 
+// The same in the terminal, where `bodyColumns` counts the slot's cells. There the keepwarm row is cache-tax-px's
+// row itself, keyed, alone or the last of `[rows, row]`, and rows stack with no gap or divider. The fold row takes
+// `fold`, five `n: Level` buttons and their gaps; the keepwarm row needs `[>] cache-tax · warm`; one cell is left at the
+// right edge, as Claude Code leaves one right of its `[-]`.
+const TERMINAL_FOLD_CELLS = 4 + LEVELS.reduce((n, name, i) => n + `${i + 1}: ${name}`.length, 0) + 2 * LEVELS.length
+const TERMINAL_STATUS_MIN = '[>] cache-tax · warm'.length
+export const TERMINAL_BESIDE_MIN_COLUMNS = TERMINAL_FOLD_CELLS + 2 + TERMINAL_STATUS_MIN + 1
+
+// The terminal's keepwarm row and what is left of the tree once it is lifted out, or null when the tree does not hold it
+export const liftKeepwarmTerminal = (tree: unknown): { status: unknown; rest: unknown } | null => {
+  const t = tree as Node
+  if (keyOf(t) === KEEPWARM_KEY) return { status: t, rest: null }
+  const kids = t?.type === 'Box' && t.props?.flexDirection === 'column' ? (t.children ?? []) : []
+  if (kids.length < 2 || keyOf(kids[kids.length - 1]) !== KEEPWARM_KEY) return null
+  return { status: kids[kids.length - 1], rest: { ...t, children: kids.slice(0, -1) } }
+}
+
 export const register: Register = (on, options) => {
   // The level every reply is read at: 1 Full (as written) to 5 Gist, from the setting until the reader picks another.
   // A session keeps the one it has when the setting changes (the module reloads; the value is the host's).
@@ -91,7 +108,10 @@ export const register: Register = (on, options) => {
     const n = await read($, level)
     const pick = (i: number) => () => update($, level, () => (i + 1) as Level)
     const drawnBeneath = await next(e)
-    const lifted = e.surface === 'vscode' && e.props.bodyColumns >= BESIDE_MIN_COLUMNS ? liftKeepwarm(drawnBeneath) : null
+    const lifted =
+      e.surface === 'vscode' ? (e.props.bodyColumns >= BESIDE_MIN_COLUMNS ? liftKeepwarm(drawnBeneath) : null)
+      : e.surface === 'terminal' ? (e.props.bodyColumns >= TERMINAL_BESIDE_MIN_COLUMNS ? liftKeepwarmTerminal(drawnBeneath) : null)
+      : null
     const theirs = lifted ? lifted.rest : drawnBeneath
     let row
     if (e.surface === 'vscode') {
@@ -174,6 +194,12 @@ export const register: Register = (on, options) => {
               onPress={pick(i)}
             />
           ))}
+          {lifted && (
+            // The keepwarm row, lifted, takes what the levels leave on their line, at its right end, and truncates
+            <Box key="keepwarm" flexDirection="row" flexGrow={1} width={0} justifyContent="flex-end" paddingRight={1}>
+              {lifted.status as never}
+            </Box>
+          )}
         </Box>
       )
     }
