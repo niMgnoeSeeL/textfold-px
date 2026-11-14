@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
-import { BESIDE_MIN_COLUMNS, KEEPWARM_KEY, liftKeepwarm, RIGHT_INSET, TERMINAL_BESIDE_MIN_COLUMNS } from '../hooks/register'
+import { BESIDE_MIN_COLUMNS, KEEPWARM_KEY, liftKeepwarm } from '../hooks/register'
 
 // The band above the prompt, as several mods share it: textfold's row on top, what the hooks beneath drew under
 // it (the layout contract's C1 and C2), and in VS Code a row of outlined buttons with the current level inverted.
@@ -16,25 +16,12 @@ const LINE = 0.88
 // The space between the fold row's wrapped lines, in the band's lines (register.tsx's WRAP): under 7px, about 2.7px
 const WRAP = 0.15
 // VS Code's space around the fold row, in the band's lines (register.tsx's SPACE), measured by ink at 13px (C2): 7px
-// from the host's title above it, 3px from it to the divider, a text row's under the divider before rows beneath
-// that bring no space of their own, and 5px to the box's edge under the last row
-const SPACE = { above: 0.26, between: 0.12, unspaced: 0.06, end: 0.06 } as const
+// from the host's title above it, and 5px to the box's edge under the last row
+const SPACE = { above: 0.26, end: 0.06 } as const
 const ROOT = { flexDirection: 'column', paddingTop: SPACE.above, paddingBottom: SPACE.end } as const
-// The divider between two mods' blocks (register.tsx's DIVIDER): a line of 1px at 13px that hangs under its join
-const DIVIDER = { line: 0.055, hang: 0.044 } as const
-// The band's line at the chat font's default, in CSS px
-const LINE_PX = 1.4 * 13
-
-// The divider at the join under the fold row: SPACE.between above it, and `under` when the rows beneath bring no space
-// of their own above them. Its Box takes no height; the line in it hangs DIVIDER.hang under the join.
-const divider = (under?: number) => ({
-  type: 'Box',
-  props: { flexDirection: 'column', height: 0, marginTop: SPACE.between, ...(under !== undefined ? { marginBottom: under } : {}) },
-  children: [{ type: 'Box', props: { height: DIVIDER.line, marginTop: DIVIDER.hang, flexShrink: 0, backgroundColor: 'promptBorder' } }],
-})
 const isDivider = (el: Element) => el.type === 'Box' && el.props?.backgroundColor === 'promptBorder'
 
-type Element = { type: string; props?: Record<string, unknown>; children?: unknown[] }
+type Element = { type: string; props?: Record<string, unknown>; children?: unknown[]; part?: { plugin?: string } }
 const isElement = (node: unknown): node is Element => typeof node === 'object' && node !== null && 'type' in node
 
 // Every element of a tree, outermost first
@@ -51,34 +38,26 @@ const bare = (node: unknown): unknown => {
 const textOf = (node: unknown): string =>
   typeof node === 'string' ? node : isElement(node) ? (node.children ?? []).map(textOf).join('') : ''
 
-// What the hooks beneath textfold draw, standing in for the other mods and for Claude Code itself. `spaced` and
-// `spacedFirst` bring their own space above them: on their root, or on the first of a column's rows.
-type Beneath = 'nothing' | 'text' | 'rows' | 'engine' | 'spaced' | 'spacedFirst' | 'endSpaced' | 'endSpacedLast'
+// What the hooks beneath textfold draw, standing in for the other mods and for Claude Code itself. `spaced` brings
+// its own space above it.
+type Beneath = 'nothing' | 'text' | 'engine' | 'spaced'
 const beneath = (on: On, kind: Beneath) =>
   on('ui.render', async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
     if (kind === 'engine') return { type: 'engine', ref: 0 } as never
     if (kind === 'text') return Text({ children: ['beneath'] })
-    if (kind === 'rows')
-      return Box({ flexDirection: 'column', children: [Text({ children: ['a rule'] }), Text({ children: ['a status'] })] })
     if (kind === 'spaced') return Box({ flexDirection: 'column', paddingTop: 0.3, children: [Text({ children: ['a rule'] })] })
-    // `endSpaced` and `endSpacedLast` own the box's bottom edge: space under their root, or under a column's last row
-    if (kind === 'endSpaced') return Box({ flexDirection: 'column', paddingBottom: 0.2, children: [Text({ children: ['a status'] })] })
-    if (kind === 'endSpacedLast')
-      return Box({
-        flexDirection: 'column',
-        children: [Text({ children: ['a rule'] }), Box({ marginBottom: 0.3, children: [Text({ children: ['a status'] })] })],
-      })
-    if (kind === 'spacedFirst')
-      return Box({
-        flexDirection: 'column',
-        children: [Box({ marginTop: 0.5, children: [Text({ children: ['a rule'] })] }), Text({ children: ['a status'] })],
-      })
     return Box({ children: [Box({ children: [] }), ' '] })
   })
 
-// The fold row in a drawing: in VS Code the first row of textfold's root, elsewhere the root itself when alone
-const rowOf = async (band: { drawn: () => Promise<unknown> }) => ((await band.drawn()) as Element).children?.[0] as Element
+// textfold's own row in the band: the drawing's root when it is the only row, else one of the list's rows
+const own = (tree: unknown): Element =>
+  (isElement(tree) && tree.part?.plugin === 'textfold'
+    ? tree
+    : (isElement(tree) ? tree.children ?? [] : []).find((c): c is Element => isElement(c) && c.part?.plugin === 'textfold')) as Element
+
+// The fold row in a drawing: in VS Code the first row of textfold's root, elsewhere the root itself
+const rowOf = async (band: { drawn: () => Promise<unknown> }) => own(await band.drawn()).children?.[0] as Element
 
 describe('in VS Code', () => {
   test('every level but the current one is an outlined Button, with no hotkey, and no text is dim', async ($, on) => {
@@ -189,7 +168,7 @@ describe('in VS Code', () => {
     const band = await $.ui.mount({ plugin: 'textfold', surface: 'vscode', ...BAND })
     for (const k of [1, 2]) {
       if (k !== 1) await band.press({ key: `level-${k}` })
-      const drawn = (await band.drawn()) as Element
+      const drawn = own(await band.drawn())
       expect(drawn.props).toEqual(ROOT)
       expect(drawn.children).toHaveLength(1)
       expect((drawn.children?.[0] as Element).props?.flexWrap).toBe('wrap')
@@ -198,56 +177,7 @@ describe('in VS Code', () => {
     await band.unmount()
   })
 
-  for (const kind of ['spaced', 'spacedFirst'] as const) {
-    test(`rows beneath with their own space above them (${kind === 'spaced' ? 'on their root' : 'on their first row'}) get the divider and no space under it`, async ($, on) => {
-      beneath(on, kind)
-      const band = await $.ui.mount({ plugin: 'textfold', surface: 'vscode', ...BAND })
-      const drawn = (await band.drawn()) as Element
-      expect(drawn.props).toEqual(ROOT)
-      expect(drawn.children).toHaveLength(3)
-      expect(bare(drawn.children?.[1])).toEqual(divider())
-      expect(textOf(drawn.children?.[2])).toBe(kind === 'spaced' ? 'a rule' : 'a rulea status')
-      await band.unmount()
-    })
-  }
-
-  for (const kind of ['endSpaced', 'endSpacedLast'] as const) {
-    test(`rows beneath that end with their own space (${kind === 'endSpaced' ? 'on their root' : 'on their last row'}) own the bottom edge: no space added under them`, async ($, on) => {
-      beneath(on, kind)
-      const band = await $.ui.mount({ plugin: 'textfold', surface: 'vscode', ...BAND })
-      const drawn = (await band.drawn()) as Element
-      expect(drawn.props).toEqual({ flexDirection: 'column', paddingTop: SPACE.above })
-      expect(drawn.children).toHaveLength(3)
-      // They bring no space above them, so the divider brings a text row's under it
-      expect(bare(drawn.children?.[1])).toEqual(divider(SPACE.unspaced))
-      expect(textOf(drawn.children?.[2])).toBe(kind === 'endSpaced' ? 'a status' : 'a rulea status')
-      await band.unmount()
-    })
-  }
-
-  test('rows beneath with no space of their own at the bottom leave it to the fold row’s root', async ($, on) => {
-    beneath(on, 'spaced')
-    const band = await $.ui.mount({ plugin: 'textfold', surface: 'vscode', ...BAND })
-    // Space above them but none below: no gap before them, and the root keeps the space under the last row
-    expect(((await band.drawn()) as Element).props).toEqual(ROOT)
-    await band.unmount()
-  })
-
-  test('the divider is a 1px line of the prompt’s border color whose Box takes no height', async ($, on) => {
-    // At the chat font's 13px the line is a pixel, within a twentieth; it hangs under its join by less than its gap
-    expect(Math.abs(DIVIDER.line * LINE_PX - 1)).toBeLessThan(0.05)
-    expect(DIVIDER.hang * LINE_PX).toBeLessThan(SPACE.between * LINE_PX)
-    beneath(on, 'spaced')
-    const band = await $.ui.mount({ plugin: 'textfold', surface: 'vscode', ...BAND })
-    const drawn = (await band.drawn()) as Element
-    const lines = all(drawn).filter(isDivider)
-    expect(lines).toHaveLength(1)
-    // The line spans the content's width: no width of its own, in a column that stretches it, and it does not shrink
-    // in its Box of no height
-    expect(lines[0]?.props).toEqual({ height: DIVIDER.line, marginTop: DIVIDER.hang, flexShrink: 0, backgroundColor: 'promptBorder' })
-    expect((drawn.children?.[1] as Element).props).toMatchObject({ flexDirection: 'column', height: 0 })
-    await band.unmount()
-  })
+  // Stacking with rows beneath is drawn by box-layout under Claude Code 2.1.323 and is covered by its tests
 
   test('no divider over the fold row, under it when it is the last, or with only Claude Code’s placeholder beneath', async ($, on) => {
     beneath(on, 'engine')
@@ -271,24 +201,7 @@ describe('in VS Code', () => {
 })
 
 describe('the band is shared', () => {
-  for (const kind of ['text', 'rows'] as const) {
-    test(`with ${kind === 'text' ? 'a Text' : 'a Box of rows'} beneath, both are drawn: the fold row on top, a divider between them in VS Code and no gap elsewhere`, async ($, on) => {
-      beneath(on, kind)
-      for (const surface of SURFACES) {
-        const band = await $.ui.mount({ plugin: 'textfold', surface, ...BAND })
-        const drawn = (await band.drawn()) as Element
-        expect(drawn.type).toBe('Box')
-        expect(drawn.props).toEqual(surface === 'vscode' ? ROOT : { flexDirection: 'column' })
-        expect(drawn.children).toHaveLength(surface === 'vscode' ? 3 : 2)
-        if (surface === 'vscode') expect(bare(drawn.children?.[1])).toEqual(divider(SPACE.unspaced))
-        else expect(all(drawn).some(isDivider)).toBe(false)
-        const [row, theirs] = (drawn.children as Element[]).filter((c) => !all(c).some(isDivider))
-        expect(all(row).some((el) => el.type === 'Text' && textOf(el) === 'fold')).toBe(true)
-        expect(textOf(theirs)).toBe(kind === 'text' ? 'beneath' : 'a rulea status')
-        await band.unmount()
-      }
-    })
-  }
+  // Stacking with rows beneath is drawn by box-layout under Claude Code 2.1.323 and is covered by its tests
 
   test('Claude Code’s own placeholder beneath is not nested: the row stands alone', async ($, on) => {
     beneath(on, 'engine')
@@ -304,17 +217,7 @@ describe('the band is shared', () => {
     }
   })
 
-  test('a band beneath that draws nothing leaves the row alone', async ($, on) => {
-    beneath(on, 'nothing')
-    for (const surface of SURFACES) {
-      const band = await $.ui.mount({ plugin: 'textfold', surface, ...BAND })
-      const drawn = (await band.drawn()) as Element
-      if (surface === 'vscode') expect([drawn.props, drawn.children?.length]).toEqual([ROOT, 1])
-      else expect(drawn.props?.flexDirection).toBe('row')
-      expect(await band.find({ type: 'Text', text: 'fold' })).toBeDefined()
-      await band.unmount()
-    }
-  })
+  // Stacking with rows beneath is drawn by box-layout under Claude Code 2.1.323 and is covered by its tests
 
   test('a survey keeps the band: what is beneath passes through unchanged', async ($, on) => {
     on('ui.render', async ($, e) => {
@@ -336,14 +239,13 @@ for (const kind of ['nothing', 'text', 'spaced'] as const) {
     const spacing = ['paddingTop', 'paddingBottom', 'paddingY', 'padding', 'marginTop', 'marginBottom', 'marginY', 'margin', 'rowGap', 'gap']
     for (const surface of CLASSIC) {
       const band = await $.ui.mount({ plugin: 'textfold', surface, ...BAND })
-      const drawn = (await band.drawn()) as Element
-      const row = kind === 'nothing' ? drawn : (drawn.children?.[0] as Element)
-      if (kind !== 'nothing') expect(drawn.props).toEqual({ flexDirection: 'column' })
+      const row = own(await band.drawn())
       expect(row.props).toEqual({ flexDirection: 'row', columnGap: 2 })
       for (const el of all(row)) for (const k of spacing) expect(el.props?.[k]).toBeUndefined()
-      // No divider: the rows stack as they did, the fold row and then what is beneath
-      expect(all(drawn).some((el) => el.props?.backgroundColor === 'promptBorder')).toBe(false)
-      expect(drawn.children).toHaveLength(kind === 'nothing' ? 6 : 2)
+      // No divider, and the fold label and the five levels only
+      expect(all(row).some((el) => el.props?.backgroundColor === 'promptBorder')).toBe(false)
+      expect(row.children).toHaveLength(6)
+      // Stacking with rows beneath is drawn by box-layout under Claude Code 2.1.323 and is covered by its tests
       await band.unmount()
     }
   })
@@ -364,11 +266,11 @@ test('the terminal, the desktop and mobile keep today’s row, hotkeys included'
   })
   for (const surface of CLASSIC) {
     const band = await $.ui.mount({ plugin: 'textfold', surface, ...BAND })
-    expect(bare(await band.drawn())).toEqual(today(1))
+    expect(bare(own(await band.drawn()))).toEqual(today(1))
     await band.press({ key: 'level-3' })
-    expect(bare(await band.drawn())).toEqual(today(3))
+    expect(bare(own(await band.drawn()))).toEqual(today(3))
     await band.press({ key: 'level-1' })
-    expect(bare(await band.drawn())).toEqual(today(1))
+    expect(bare(own(await band.drawn()))).toEqual(today(1))
     await band.unmount()
   }
 })
@@ -397,71 +299,5 @@ describe('the keepwarm row beside the levels', () => {
     expect(BESIDE_MIN_COLUMNS).toBe(35)
   })
 
-  // cache-tax-px's tree as it hands it up: its rows beneath (reflect's), a divider, and its keyed block
-  const handed = (on: On) =>
-    on('ui.render', async ($, e) => {
-      const { Box, Text } = $.ui.resolve(e)
-      const line = Box({ flexDirection: 'column', height: 0, marginTop: 0.12, children: [Box({ height: 0.055, marginTop: 0.044, flexShrink: 0, backgroundColor: 'promptBorder' })] })
-      const block = Box({ key: KEEPWARM_KEY, flexDirection: 'column', paddingTop: 0.195, paddingBottom: 0.005, children: [Box({ flexDirection: 'row', flexWrap: 'nowrap', children: [Text({ children: ['cache-tax warm'] })] })] })
-      return Box({ flexDirection: 'column', children: [Box({ flexDirection: 'column', paddingTop: 0.05, children: [Text({ children: ['reflect · rule'] })] }), line, block] })
-    })
-  const mountAt = ($: any, columns: number) =>
-    $.ui.mount({ plugin: 'textfold', surface: 'vscode', component: 'AbovePrompt', props: { ...PROPS, bodyColumns: columns } })
-
-  test('wide enough, the row sits at the right end of the fold row’s line, and the divider over it is gone', async ($, on) => {
-    handed(on)
-    const band = await mountAt($, BESIDE_MIN_COLUMNS)
-    const row = await rowOf(band)
-    const status = row.children?.[row.children.length - 1] as Element
-    expect(status.props).toEqual({ key: 'keepwarm', flexDirection: 'row', flexWrap: 'nowrap', flexGrow: 1, width: 0, justifyContent: 'flex-end', paddingRight: RIGHT_INSET })
-    const all = JSON.stringify(await band.drawn())
-    expect(all.match(/cache-tax warm/g)?.length).toBe(1)
-    // one divider: textfold's own, between the fold row and reflect's rows
-    expect(all.match(/promptBorder/g)?.length).toBe(1)
-    expect(all.indexOf('cache-tax warm')).toBeLessThan(all.indexOf('reflect · rule'))
-    await band.unmount()
-  })
-
-  test('narrower, the tree is drawn as it was handed, the row at the box’s foot', async ($, on) => {
-    handed(on)
-    const band = await mountAt($, BESIDE_MIN_COLUMNS - 1)
-    const all = JSON.stringify(await band.drawn())
-    expect(all.match(/promptBorder/g)?.length).toBe(2)
-    expect(all.indexOf('cache-tax warm')).toBeGreaterThan(all.indexOf('reflect · rule'))
-    await band.unmount()
-  })
-
-  // cache-tax-px's terminal tree: its rows beneath (reflect's), then its keyed row, with no gap or divider
-  const handedTerminal = (on: On) =>
-    on('ui.render', async ($, e) => {
-      const { Box, Text } = $.ui.resolve(e)
-      const row = Box({ key: KEEPWARM_KEY, flexWrap: 'nowrap', flexDirection: 'row', children: [Text({ wrap: 'truncate-end', children: ['[>] cache-tax · warm · keepwarm 3h00m left'] })] })
-      return Box({ flexDirection: 'column', children: [Text({ children: ['reflect · rule'] }), row] })
-    })
-  const terminalAt = ($: any, columns: number) =>
-    $.ui.mount({ plugin: 'textfold', surface: 'terminal', component: 'AbovePrompt', props: { ...PROPS, bodyColumns: columns } })
-
-  test('in the terminal, wide enough, the row sits at the right end of the fold row’s line', async ($, on) => {
-    handedTerminal(on)
-    expect(TERMINAL_BESIDE_MIN_COLUMNS).toBe(4 + 41 + 10 + 2 + 20 + 1)
-    const band = await terminalAt($, TERMINAL_BESIDE_MIN_COLUMNS)
-    const drawn = (await band.drawn()) as Element
-    const row = drawn.children?.[0] as Element
-    const status = row.children?.[row.children.length - 1] as Element
-    expect(status.props).toEqual({ key: 'keepwarm', flexDirection: 'row', flexGrow: 1, width: 0, justifyContent: 'flex-end', paddingRight: 1 })
-    const all = JSON.stringify(drawn)
-    expect(all.match(/cache-tax · warm/g)?.length).toBe(1)
-    expect(all.indexOf('cache-tax · warm')).toBeLessThan(all.indexOf('reflect · rule'))
-    // no gap and no divider in the terminal
-    expect(all).not.toContain('promptBorder')
-    await band.unmount()
-  })
-
-  test('in the terminal, narrower, the tree is drawn as it was handed', async ($, on) => {
-    handedTerminal(on)
-    const band = await terminalAt($, TERMINAL_BESIDE_MIN_COLUMNS - 1)
-    const all = JSON.stringify(await band.drawn())
-    expect(all.indexOf('cache-tax · warm')).toBeGreaterThan(all.indexOf('reflect · rule'))
-    await band.unmount()
-  })
+  // Stacking with rows beneath is drawn by box-layout under Claude Code 2.1.323 and is covered by its tests
 })
